@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<title>投資ゲーム</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<style>
+body {
+  font-family: system-ui;
+  background: #111;
+  color: #fff;
+  text-align: center;
+}
+button, input {
+  font-size: 16px;
+  padding: 8px 14px;
+  margin: 5px;
+}
+.box {
+  margin-top: 12px;
+  font-size: 18px;
+}
+.event {
+  color: gold;
+  font-weight: bold;
+}
+canvas {
+  background: #000;
+  margin-top: 15px;
+  border: 1px solid #444;
+}
+.admin {
+  margin-top: 15px;
+  border-top: 1px dashed #555;
+  padding-top: 10px;
+}
+.hidden {
+  display: none;
+}
+</style>
+</head>
+<body>
+
+<h1>📈 投資ゲーム</h1>
+
+<div class="box">
+  💰 所持金：<span id="money"></span>円<br>
+  📦 保有株：<span id="stocks"></span>株<br>
+  💹 株価：<span id="price"></span>円
+</div>
+
+<div class="box">
+  <button onclick="buy()">買う</button>
+  <button onclick="sell()">売る</button>
+</div>
+
+<div class="box event" id="eventText"></div>
+<div class="box" id="countdown"></div>
+
+<canvas id="chart" width="320" height="150"></canvas>
+
+<div class="admin">
+  <div>🔑 管理者コード</div>
+  <input id="adminInput" placeholder="コード入力">
+  <button onclick="checkAdmin()">OK</button>
+
+  <div id="adminPanel" class="hidden">
+    <button onclick="adminBoost()">💰+📦 1000000</button>
+    <button onclick="boostLuck()">🍀 株ラック×10</button>
+  </div>
+</div>
+
+<script>
+let money = 1000;
+let stocks = 0;
+let price = 100;
+let history = [];
+let luck = 1;
+let adminUnlocked = false;
+
+/* ===== セーブ読み込み ===== */
+if (localStorage.saveData) {
+  const d = JSON.parse(localStorage.saveData);
+  money = d.money ?? money;
+  stocks = d.stocks ?? stocks;
+  price = d.price ?? price;
+  history = d.history ?? history;
+  luck = d.luck ?? luck;
+  adminUnlocked = d.adminUnlocked ?? adminUnlocked;
+}
+
+/* ===== DOM ===== */
+const moneyEl = document.getElementById("money");
+const stocksEl = document.getElementById("stocks");
+const priceEl = document.getElementById("price");
+const eventText = document.getElementById("eventText");
+const countdownEl = document.getElementById("countdown");
+const canvas = document.getElementById("chart");
+const ctx = canvas.getContext("2d");
+const adminPanel = document.getElementById("adminPanel");
+
+if (adminUnlocked) adminPanel.classList.remove("hidden");
+
+/* ===== 保存 ===== */
+function save() {
+  localStorage.saveData = JSON.stringify({
+    money, stocks, price, history, luck, adminUnlocked
+  });
+}
+
+/* ===== UI ===== */
+function updateUI() {
+  moneyEl.textContent = Math.floor(money);
+  stocksEl.textContent = stocks;
+  priceEl.textContent = Math.floor(price);
+}
+
+/* ===== 管理者イベント判定 ===== */
+function isAdminEvent() {
+  const n = new Date();
+  return n.getHours() === 19 && n.getMinutes() < 20;
+}
+
+/* ===== カウントダウン（時間・分・秒） ===== */
+function updateCountdown() {
+  const now = new Date();
+  let target = new Date();
+  target.setHours(19, 0, 0, 0);
+
+  if (now > target) target.setDate(target.getDate() + 1);
+
+  const diff = target - now;
+
+  const h = Math.floor(diff / 3600000);
+  const m = Math.floor((diff % 3600000) / 60000);
+  const s = Math.floor((diff % 60000) / 1000);
+
+  if (!isAdminEvent()) {
+    countdownEl.textContent =
+      `⏳ 管理者イベントまで ${h}時間${m}分${s}秒`;
+  } else {
+    countdownEl.textContent = "";
+  }
+}
+
+/* ===== 株価更新 ===== */
+function priceUpdate() {
+  let change = (Math.random() * 4 - 2) * luck;
+
+  if (isAdminEvent()) {
+    change += Math.random() * 2 * luck;
+    eventText.textContent = "📢 管理者イベント中（19:00〜19:20）";
+  } else {
+    eventText.textContent = "";
+  }
+
+  price += change;
+  if (price < 1) price = 1;
+
+  history.push(price);
+  if (history.length > 60) history.shift();
+
+  updateUI();
+  drawChart();
+  updateCountdown();
+  save();
+}
+
+/* ===== グラフ描画 ===== */
+function drawChart() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  if (history.length < 2) return;
+
+  const max = Math.max(...history);
+  const min = Math.min(...history);
+  const range = max - min || 1;
+
+  ctx.strokeStyle = "#00ff88";
+  ctx.beginPath();
+
+  history.forEach((p, i) => {
+    const x = (i / (history.length - 1)) * canvas.width;
+    const y = canvas.height - ((p - min) / range) * canvas.height;
+    i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+  });
+
+  ctx.stroke();
+}
+
+/* ===== 売買 ===== */
+function buy() {
+  if (money >= price) {
+    money -= price;
+    stocks++;
+    updateUI();
+    save();
+  }
+}
+
+function sell() {
+  if (stocks > 0) {
+    money += price;
+    stocks--;
+    updateUI();
+    save();
+  }
+}
+
+/* ===== 管理者 ===== */
+function checkAdmin() {
+  if (document.getElementById("adminInput").value === "TTJP") {
+    adminUnlocked = true;
+    adminPanel.classList.remove("hidden");
+    save();
+  }
+}
+
+function adminBoost() {
+  money += 1000000;
+  stocks += 1000000;
+  updateUI();
+  save();
+}
+
+function boostLuck() {
+  luck *= 10;
+  save();
+}
+
+/* ===== ループ ===== */
+setInterval(priceUpdate, 1000);
+updateUI();
+drawChart();
+updateCountdown();
+</script>
+
+</body>
+</html>
